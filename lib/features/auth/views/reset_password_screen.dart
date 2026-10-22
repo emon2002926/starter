@@ -1,11 +1,14 @@
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/constants/app_colors.dart';
+import '../../../core/util/app_navigation.dart';
 import '../../../core/util/screen_size.dart';
+import '../../../core/widgets/buttons/app_button.dart';
+import '../../../core/widgets/feature/feature_app_bar.dart';
+import '../../../core/widgets/text/app_text.dart';
+import '../../../core/widgets/text/text_field/AppTextFiled.dart';
 import '../controllers/reset_password_controller.dart';
-import '../widgets/auth_fields.dart';
-import '../widgets/auth_scaffold.dart';
 
 class ResetPasswordScreen extends StatelessWidget {
   const ResetPasswordScreen({
@@ -21,51 +24,148 @@ class ResetPasswordScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Get.find<ResetPasswordController>();
 
-    return AuthScaffold(
-      showBack: true,
-      title: 'Set new password',
-      subtitle: 'Create a strong new password for your Averymarsh account.',
-      icon: Icons.lock_outline_rounded,
-      child: Column(
-        children: [
-          Obx(
-            () => AuthTextField(
-              label: 'New Password',
-              hintText: 'Min 8 characters',
-              controller: controller.passwordController,
-              focusNode: controller.passwordFocus,
-              obscureText: controller.obscurePassword.value,
-              prefixIcon: Icons.lock_outline_rounded,
-              suffixIcon: controller.obscurePassword.value
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              onSuffixTap: controller.togglePassword,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF9FAFB),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                context.w(12),
+                context.h(6),
+                context.w(12),
+                0,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FeatureIconButton(
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  onTap: () => AppNavigation.pop(null, context),
+                ),
+              ),
             ),
-          ),
-          SizedBox(height: context.h(16)),
-          Obx(
-            () => AuthTextField(
-              label: 'Confirm Password',
-              hintText: 'Repeat new password',
-              controller: controller.confirmController,
-              focusNode: controller.confirmFocus,
-              obscureText: controller.obscureConfirm.value,
-              prefixIcon: Icons.lock_outline_rounded,
-              suffixIcon: controller.obscureConfirm.value
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              onSuffixTap: controller.toggleConfirm,
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          context.w(24),
+                          context.h(16),
+                          context.w(24),
+                          context.h(24),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: context.w(24),
+                                vertical: context.h(32),
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.white,
+                                borderRadius: BorderRadius.circular(context.w(16)),
+                                border: Border.all(
+                                  color: AppColors.uiBorder.withValues(alpha: 0.5),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(context.w(10)),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEFF6FF),
+                                      borderRadius: BorderRadius.circular(context.w(10)),
+                                    ),
+                                    child: Icon(
+                                      Icons.lock_outline_rounded,
+                                      color: const Color(0xFF2563EB),
+                                      size: context.sp(22),
+                                    ),
+                                  ),
+                                  SizedBox(height: context.h(16)),
+                                  AppText(
+                                    data: 'Set new password',
+                                    textAlign: TextAlign.center,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.ink,
+                                    latterSpacing: -0.5,
+                                  ),
+                                  SizedBox(height: context.h(8)),
+                                  AppText(
+                                    data: 'Create a strong new password for your Averymarsh account.',
+                                    textAlign: TextAlign.center,
+                                    fontSize: 13,
+                                    color: AppColors.muted,
+                                    height: 1.5,
+                                  ),
+                                  SizedBox(height: context.h(32)),
+                                  Obx(
+                                    () => AppTextField(
+                                      label: 'New Password',
+                                      hintText: 'Min 8 characters',
+                                      controller: controller.passwordController,
+                                      focusNode: controller.passwordFocus,
+                                      obscureText: controller.obscurePassword.value,
+                                      prefixIcon: Icons.lock_outline_rounded,
+                                      suffixIcon: controller.obscurePassword.value
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                      onSuffixIconTap: controller.togglePassword,
+                                    ),
+                                  ),
+                                  SizedBox(height: context.h(16)),
+                                  Obx(
+                                    () => AppTextField(
+                                      label: 'Confirm Password',
+                                      hintText: 'Repeat new password',
+                                      controller: controller.confirmController,
+                                      focusNode: controller.confirmFocus,
+                                      obscureText: controller.obscureConfirm.value,
+                                      prefixIcon: Icons.lock_outline_rounded,
+                                      suffixIcon: controller.obscureConfirm.value
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                      onSuffixIconTap: controller.toggleConfirm,
+                                    ),
+                                  ),
+                                  SizedBox(height: context.h(28)),
+                                  Obx(
+                                    () => AppButton(
+                                      buttonText: 'Reset Password',
+                                      isLoading: controller.isLoading.value,
+                                      onPressed: () =>
+                                          controller.onSubmitTap(email, code),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-          SizedBox(height: context.h(28)),
-          Obx(
-            () => AuthPrimaryButton(
-              label: 'Reset Password',
-              isLoading: controller.isLoading.value,
-              onTap: () => controller.onSubmitTap(email, code),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

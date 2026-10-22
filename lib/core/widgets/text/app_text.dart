@@ -216,7 +216,7 @@ class AppText extends StatelessWidget {
       );
     }
 
-    return GoogleFonts.nunito(
+    return GoogleFonts.plusJakartaSans(
       height: height,
       fontSize: responsiveFontSize,
       color: color ?? Colors.black,
