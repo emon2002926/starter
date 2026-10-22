@@ -115,6 +115,7 @@ class ForgotPasswordScreen extends StatelessWidget {
                                     focusNode: controller.emailFocus,
                                     keyboardType: TextInputType.emailAddress,
                                     prefixIcon: Icons.mail_outline_rounded,
+
                                   ),
                                   SizedBox(height: context.h(28)),
                                   Obx(

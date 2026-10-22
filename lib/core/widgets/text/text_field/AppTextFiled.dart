@@ -154,7 +154,7 @@ class _AppTextFieldState extends State<AppTextField> {
                 ? TextAlign.center
                 : TextAlign.start,
             style: GoogleFonts.nunito(
-              color: widget.inputTextColor?? Colors.white,
+              color: widget.inputTextColor?? AppColors.muted,
               fontSize: inputFontSize,
             ),
             decoration: InputDecoration(
@@ -166,8 +166,8 @@ class _AppTextFieldState extends State<AppTextField> {
               ),
               filled: true,
               fillColor: widget.enabled
-                  ? (widget.fillColor ?? Color(0xFF141414))
-                  : Color(0xFF141414),
+                  ? (widget.fillColor ?? Colors.transparent)
+                  : Colors.transparent,
               prefixIcon: widget.prefixIcon != null
                   ? Icon(
                 widget.prefixIcon,

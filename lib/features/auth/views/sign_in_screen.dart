@@ -82,6 +82,7 @@ class SignInScreen extends StatelessWidget {
                               controller: controller.emailController,
                               focusNode: controller.emailFocus,
                               keyboardType: TextInputType.emailAddress,
+                              fillColor: Colors.transparent,
                               prefixIcon: Icons.mail_outline_rounded,
                             ),
                             SizedBox(height: context.h(16)),
@@ -92,6 +93,7 @@ class SignInScreen extends StatelessWidget {
                                 controller: controller.passwordController,
                                 focusNode: controller.passwordFocus,
                                 obscureText: controller.obscurePassword.value,
+
                                 prefixIcon: Icons.lock_outline_rounded,
                                 suffixIcon: controller.obscurePassword.value
                                     ? Icons.visibility_outlined
@@ -173,7 +175,7 @@ class SignInScreen extends StatelessWidget {
                               data: 'Sign Up',
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
-                              color: AppColors.brandBlue,
+                              color: AppColors.buttonFillColor,
                             ),
                           ),
                         ],

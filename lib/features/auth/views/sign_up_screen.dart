@@ -168,7 +168,7 @@ class SignUpScreen extends StatelessWidget {
                                     data: 'Sign In',
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800,
-                                    color: AppColors.brandBlue,
+                                    color: AppColors.buttonFillColor,
                                   ),
                                 ),
                               ],

@@ -127,6 +127,8 @@ class ResetPasswordScreen extends StatelessWidget {
                                           ? Icons.visibility_outlined
                                           : Icons.visibility_off_outlined,
                                       onSuffixIconTap: controller.togglePassword,
+                                      fillColor: Colors.transparent,
+
                                     ),
                                   ),
                                   SizedBox(height: context.h(16)),
@@ -142,6 +144,7 @@ class ResetPasswordScreen extends StatelessWidget {
                                           ? Icons.visibility_outlined
                                           : Icons.visibility_off_outlined,
                                       onSuffixIconTap: controller.toggleConfirm,
+
                                     ),
                                   ),
                                   SizedBox(height: context.h(28)),

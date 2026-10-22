@@ -264,7 +264,7 @@ abstract final class AppColors {
 
   static const Color borderColor = Color(0xFF6B7280);
 
-  static const Color buttonFillColor = Color(0xFF4FAF5A);
+  static const Color buttonFillColor = Color(0xFF2563EB);
 
   ////////////////  legacy unused ThemeData palette (lib/core/themes/themes.dart)
   static const Color themeGreenAccent = Color(0xFF4FAF5A);

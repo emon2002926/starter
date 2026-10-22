@@ -163,7 +163,7 @@ class OtpVerificationScreen extends StatelessWidget {
                                           data: controller.formattedTime,
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
-                                          color: AppColors.brandBlue,
+                                          color: AppColors.buttonFillColor,
                                         ),
                                       ],
                                     );
