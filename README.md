@@ -1,397 +1,781 @@
-# starter
+# starter — Project Guide for AI Agents
 
-A Flutter starter template built with **GetX**. It comes with an API layer, local storage, auth screens, a tab-based home shell, a theme, and a set of reusable widgets, so a new app can begin with feature work right away.
-
----
-
-## Table of Contents
-
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-  - [Which architecture and why](#which-architecture-and-why)
-  - [Layers](#layers)
-  - [Request flow](#request-flow)
-  - [App startup flow](#app-startup-flow)
-  - [Navigation (tab shell)](#navigation-tab-shell)
-- [Folder Structure](#folder-structure)
-- [The `core` Folder Explained](#the-core-folder-explained)
-  - [bindings](#corebindings)
-  - [services/api](#coreservicesapi)
-  - [util](#coreutil)
-  - [constants](#coreconstants)
-  - [themes](#corethemes)
-  - [routes](#coreroutes)
-  - [background](#corebackground)
-  - [user_profile](#coreuser_profile)
-  - [widgets](#corewidgets)
-- [Adding a New Feature](#adding-a-new-feature)
-- [Getting Started](#getting-started)
+> **For AI agents:** read this entire file before writing code in this project. It defines the architecture, where files go, which shared classes to use, and the rules every new screen must follow. When this guide and your own habits disagree, follow this guide.
+>
+> **For humans:** paste this file into your AI agent's context (or keep it in the repo root), then ask for features, for example: *"Following README.md, create an `orders` feature with a list screen that loads from `/orders/`."*
 
 ---
 
-## Tech Stack
+## 1. Quick Facts
 
-| Purpose                | Package                    |
-| ---------------------- | -------------------------- |
-| State management + DI  | `get` (GetX)               |
-| Local key-value store  | `get_storage`              |
-| HTTP                   | `http`, `http_parser`      |
-| Routing (prepared)     | `go_router`                |
-| Fonts                  | `google_fonts`             |
-| Responsive sizing      | `flutter_screenutil` + custom `ScreenSize` extension |
-| Charts                 | `fl_chart`                 |
-| Misc                   | `intl`, `uuid`, `dotted_border` |
-
----
-
-## Architecture
-
-### Which architecture and why
-
-The project uses a **feature-first architecture with the GetX MVC pattern** (Model – View – Controller), plus a shared **`core`** layer.
-
-- **Feature-first:** every screen area (auth, home, projects, chat, profile) lives in its own folder under `lib/features/`, with its own views, controllers, and bindings. You can work on one feature without touching the others, and deleting a feature means deleting one folder.
-- **GetX MVC:**
-  - **View**: Flutter widgets that only draw the UI and react to state with `Obx`.
-  - **Controller**: a `GetxController` that holds state (`.obs` values), handles user actions, and calls services.
-  - **Model**: plain Dart classes that parse JSON (for example `ApiResponseModel<T>`).
-  - **Binding**: registers the controllers with GetX dependency injection, so views get them with `Get.find()` instead of creating them.
-- **Core layer:** anything used by more than one feature (networking, storage, theme, colors, shared widgets) goes in `lib/core/`. Features depend on `core`, but `core` never depends on a feature (the only exception is `AppBindings`, which wires feature bindings together at startup).
-
-Why this setup:
-
-- **Separation of concerns.** UI code has no HTTP or storage logic, and controllers have no widget code.
-- **Easy to test.** Controllers and `ApiServices` are plain classes, and `ApiServices` accepts an injectable `http.Client`.
-- **Consistent UI.** All screens share one theme, one color palette, and the same buttons, text, and dialogs.
-- **Less boilerplate.** Auth headers, logging, error snackbars, and JSON unwrapping are handled once in `ApiServices`.
-
-### Layers
-
-```mermaid
-flowchart TD
-    subgraph Features["lib/features/*"]
-        V[View<br/>Widgets + Obx]
-        C[Controller<br/>GetxController]
-        B[Binding<br/>Get.lazyPut]
-    end
-
-    subgraph Core["lib/core/*"]
-        API[ApiServices]
-        ST[StorageService]
-        UTIL[Utils<br/>AppNavigation, FormValidator, AppLog, ScreenSize]
-        UI[Shared Widgets<br/>AppButton, AppText, AppTextField ...]
-        THEME[Theme + Constants<br/>appTheme, AppColors, AppFonts]
-    end
-
-    BE[(Backend REST API)]
-    DISK[(Device storage)]
-
-    B -- registers --> C
-    V -- Get.find --> C
-    V -- uses --> UI
-    V -- uses --> THEME
-    C -- calls --> API
-    C -- reads/writes --> ST
-    C -- uses --> UTIL
-    API -- HTTP --> BE
-    API -- reads token --> ST
-    ST --> DISK
-```
-
-### Request flow
-
-This is what happens when a controller calls the API (for example, sign in):
-
-```mermaid
-sequenceDiagram
-    participant View
-    participant Controller
-    participant ApiServices
-    participant StorageService
-    participant Backend
-
-    View->>Controller: onSubmitTap()
-    Controller->>Controller: FormValidator.validateAll(...)
-    Controller->>ApiServices: post("/auth/login/", body)
-    ApiServices->>StorageService: read access token
-    ApiServices->>Backend: HTTP POST + Bearer token
-    Backend-->>ApiServices: { success, message, data }
-    alt success
-        ApiServices-->>Controller: ApiResponse(data)
-        Controller->>StorageService: saveToken(...)
-        Controller->>View: isLoading = false (Obx rebuilds)
-    else error
-        ApiServices->>View: CustomSnackBar.error(message)
-        ApiServices-->>Controller: throws HttpException
-    end
-```
-
-### App startup flow
-
-`lib/main.dart` runs these steps in order:
-
-1. `Get.put(ApiServices(baseUrl: ...))` registers one shared API client for the whole app.
-2. Sets the status bar and navigation bar style.
-3. `await GetStorage.init()` opens local storage.
-4. `AppBindings.init()` registers every feature's controllers.
-5. Starts `GetMaterialApp` with `appTheme` and the global `AppNavigation.navigatorKey`.
-6. Chooses the first screen: `BasePage` if `StorageService.hasToken`, otherwise `SignInScreen`.
-
-### Navigation (tab shell)
-
-After login the user lands on `BasePage` (`lib/features/base/`), which works like this:
-
-- An `IndexedStack` holds **four nested `Navigator`s** (Home, Projects, Latti AI, Account), so each tab keeps its own page history and scroll position.
-- `AppNavigationBar` (from `core/widgets`) switches tabs through `BaseController.onTabSelected`.
-- **Double-tapping** the active tab pops that tab back to its first page.
-- The Android back button pops inside the current tab first, and only leaves the app when the tab is already at its root.
+| Item | Value |
+| ---- | ----- |
+| Framework | Flutter (Dart `^3.13.0`), Material 3 |
+| Package name | `starter` → imports look like `package:starter/core/...` |
+| Architecture | Feature-first folders + **GetX MVC** (Model, View, Controller, Binding) |
+| State management | GetX: `.obs` values + `Obx(() => ...)` |
+| Dependency injection | GetX: `Get.put`, `Get.lazyPut`, `Get.find` |
+| Navigation | `AppNavigation` helper over Flutter `Navigator` (go_router is installed but **not used yet**) |
+| HTTP | `ApiServices` (wraps `package:http`) |
+| Local storage | `StorageService` (wraps `get_storage`) |
+| Default font | Plus Jakarta Sans (via `google_fonts`), applied by `AppText` and `appTheme` |
+| Design size | 393 × 852 (Figma). Scale with `context.w()`, `context.h()`, `context.sp()` |
+| Brand color | `AppColors.brandBlue` = **green** `#4FAF5A` (the name is legacy) |
+| App title | `Averymarsh` |
 
 ---
 
-## Folder Structure
+## 2. Golden Rules
+
+Follow these on every task.
+
+### MUST
+
+1. **Put each feature in its own folder:** `lib/features/<feature_name>/` with `binding/`, `controllers/`, `views/`, and optionally `models/` and `widgets/`.
+2. **Put business logic in a `GetxController`**, never in a widget. Views only render state and forward taps to the controller.
+3. **Register controllers in the feature's binding** with `Get.lazyPut`, and call that binding from `AppBindings.init()` in `lib/core/bindings/app_bindings.dart`.
+4. **Get controllers in views with `Get.find<XController>()`.** Do not create them with `XController()` or `Get.put` inside `build`.
+5. **Make reactive state `.obs`** and wrap only the widgets that depend on it in `Obx(() => ...)`.
+6. **Use `ApiServices` for every network call** (`Get.find<ApiServices>()`). Pass **relative paths** such as `'/auth/login/'`.
+7. **Use `StorageService` for anything persisted** (tokens, role).
+8. **Use `AppNavigation` for navigation.** Pass `context:` when navigating inside a tab so the bottom bar stays visible.
+9. **Use `AppText` for all text**, and `AppButton`, `AppTextField`, and the other widgets in `lib/core/widgets/` before writing a new widget.
+10. **Use `AppColors` for every color.** Pass `AppColors.ink` (main text) or `AppColors.muted` (secondary text) to `AppText`, because its default color is plain black.
+11. **Size everything with the `ScreenSize` extension:** `context.w(px)` for widths, horizontal padding, and radius; `context.h(px)` for heights and vertical spacing; `context.sp(px)` for raw font and icon sizes.
+12. **Dispose** `TextEditingController`s and `FocusNode`s in the controller's `onClose()`.
+13. **Use `CustomSnackBar`** for user feedback, and `FormValidator` for form checks.
+14. If a widget is needed by **two or more features**, put it in `lib/core/widgets/<group>/`. If only one feature uses it, put it in `lib/features/<feature>/widgets/`.
+
+### MUST NOT
+
+1. Do not hard-code hex colors (`Color(0xFF...)`) in features. Add a token to `AppColors` if it doesn't exist.
+2. Do not use the plain `Text` widget for UI copy; use `AppText`.
+3. Do not call `http` directly or build headers or tokens by hand.
+4. Do not pass `AppConstant.*Endpoint` values to `ApiServices`. Those are full URLs, and `ApiServices` already prepends `baseUrl`.
+5. Do not show error snackbars after an `ApiServices` call fails. `ApiServices` already shows them; just catch the exception and reset loading.
+6. Do not make `core/` import from `features/`. The only exception is `AppBindings`.
+7. Do not use files that are commented out (`UserController`, `UserProfile`, `CustomAppButton`, `GuestOverlay`, `MathText`) without uncommenting and fixing them first.
+8. Do not add a new state-management, HTTP, or routing package; use what's already in the project.
+
+---
+
+## 3. Folder Structure
 
 ```text
 lib/
-├── main.dart                     # App entry: DI, storage init, theme, first screen
-├── core/                         # Shared code used by all features
-│   ├── background/               # Decorative backgrounds
-│   ├── bindings/                 # App-wide dependency registration
-│   ├── constants/                # Colors, fonts, asset paths, endpoints, language codes
-│   ├── routes/                   # go_router config + page transitions
-│   ├── services/api/             # HTTP client + response models
-│   ├── themes/                   # Global ThemeData
-│   ├── user_profile/             # User model/controller template
-│   ├── util/                     # Storage, navigation, logging, validation, sizing
-│   └── widgets/                  # Reusable UI components
-└── features/                     # One folder per feature
-    ├── auth/
-    │   ├── controllers/          # SignIn, SignUp, Otp, ForgotPassword, ResetPassword
-    │   ├── di/                   # AuthBinding
-    │   ├── views/                # Auth screens
-    │   └── widgets/              # Auth-only widgets (OtpInputRow)
-    ├── base/                     # Bottom-nav shell (BasePage + BaseController)
-    ├── home/
-    ├── projects/
-    ├── ai_chat/
-    └── profile/
+├── main.dart                         # Entry: registers ApiServices, inits storage, AppBindings, theme, first screen
+├── core/                             # Shared code. Never imports from features/ (except AppBindings)
+│   ├── background/starry_background.dart
+│   ├── bindings/app_bindings.dart    # Calls every feature binding at startup
+│   ├── constants/
+│   │   ├── app_colors.dart           # AppColors: every color token
+│   │   ├── app_fonts.dart            # AppFonts: bundled font family names
+│   │   ├── app_constant.dart         # AppConstant: baseUrl + full endpoint URLs (legacy)
+│   │   ├── app_assert_image.dart     # AppAssertImage.instance.<asset>
+│   │   ├── images.dart               # AppImages.<asset> (legacy)
+│   │   └── lang_codes.dart           # kLangCodes
+│   ├── routes/
+│   │   ├── app_router.dart           # GoRouter (empty, unused)
+│   │   └── patto_page_transitions.dart
+│   ├── services/api/
+│   │   ├── services/api_services.dart   # ApiServices, ApiResponse, HttpException
+│   │   └── models/api_response_model.dart # ApiResponseModel<T>
+│   ├── themes/themes.dart            # appTheme (global ThemeData)
+│   ├── user_profile/                 # Commented-out templates
+│   ├── util/
+│   │   ├── app_log.dart              # AppLog (debug-only logs)
+│   │   ├── app_navigation.dart       # AppNavigation
+│   │   ├── dashed_border_painter.dart
+│   │   ├── form_validator.dart       # FormValidator, FormFieldEntry
+│   │   ├── screen_size.dart          # extension ScreenSize on BuildContext
+│   │   └── storage_service.dart      # StorageService
+│   └── widgets/                      # Shared UI (see section 8)
+└── features/
+    ├── auth/                         # Sign in, sign up, OTP, forgot/reset password
+    │   ├── controllers/  di/auth_binding.dart  views/  widgets/
+    ├── base/                         # Bottom-tab shell after login
+    │   ├── binding/base_binding.dart  controllers/base_controller.dart  views/base_page.dart
+    ├── home/views/home_view.dart     # Tab 0
+    ├── projects/views/project_home.dart  # Tab 1 (also used as tab 3 placeholder)
+    ├── ai_chat/views/chat_screen.dart    # Tab 2
+    └── profile/views/profile_page.dart
 ```
+
+**File naming:** `snake_case.dart`. One public widget or class per file. Screens end in `_screen.dart`, `_page.dart`, or `_view.dart`; controllers in `_controller.dart`; bindings in `_binding.dart`.
 
 ---
 
-## The `core` Folder Explained
+## 4. How the App Works
 
-Each section below lists the classes in one `core` subfolder: what each class does, and why you would use it.
+### Startup (`lib/main.dart`)
 
-### `core/bindings`
+```text
+main()
+ ├─ Get.put(ApiServices(baseUrl: "baseUrl"))   ← placeholder, set the real URL
+ ├─ SystemChrome style (transparent status bar, dark icons)
+ ├─ await GetStorage.init()
+ ├─ AppBindings.init()                          ← registers all controllers
+ └─ GetMaterialApp(theme: appTheme, navigatorKey: AppNavigation.navigatorKey,
+                   home: StorageService.hasToken ? BasePage() : SignInScreen())
+```
 
-| Class | What it does | Why use it |
-| ----- | ------------ | ---------- |
-| `AppBindings` (`app_bindings.dart`) | Has one static `init()` that calls every feature's binding (`AuthBinding`, `BaseBinding`, ...). Called once in `main()`. | Gives one place to register all controllers, so `Get.find<XController>()` works anywhere. When you add a feature, add its binding here. |
+### Data flow (one feature)
 
-### `core/services/api`
+```text
+View (StatelessWidget)
+  │  Get.find<XController>()
+  │  Obx(() => ...) reads .obs values
+  ▼
+Controller (GetxController)
+  │  validates input (FormValidator)
+  │  calls ApiServices.get/post/...      → backend
+  │  saves tokens/flags via StorageService
+  │  updates .obs values                 → Obx rebuilds the View
+  ▼
+ApiServices
+     adds headers + Bearer token, logs (AppLog), unwraps {success, message, data}
+     success → returns ApiResponse
+     failure → shows CustomSnackBar.error, then throws HttpException
+```
 
-| Class | What it does | Why use it |
-| ----- | ------------ | ---------- |
-| `ApiServices` (`services/api_services.dart`) | The single HTTP client. Offers `get`, `post`, `put`, `patch`, `delete`, plus `postFormData` / `putFormData` / `patchFormData` for uploading a file. Adds JSON headers and `Authorization: Bearer <token>` automatically, logs every request and response, and unwraps the `{ success, message, data }` response shape. | Controllers never repeat headers, token handling, JSON decoding, or error UI. On failure it shows an error snackbar and throws, so a controller only needs `try/finally` to reset its loading state. |
-| `ApiResponse` (`services/api_services.dart`) | The value returned on success: `statusCode`, `isSuccess`, `message`, `data`. Helpers: `asMap`, `asList`, `get<T>('key')`. | Lets you read data safely, for example `response.get<String>('token')`, without manual casting. |
-| `HttpException` (`services/api_services.dart`) | Thrown when the server returns a non-2xx status or `success: false`. Holds `message`, `statusCode`, `uri`, `body`, `status`. | Lets a controller react to specific failures, for example a 401 or a `status` like `resend_activation`. |
-| `ApiResponseModel<T>` (`models/api_response_model.dart`) | A typed wrapper over the same response shape. Build it with `fromJson`, `fromApiResponse`, or `fromList` for lists. | Turns raw `data` into your own model classes (`ApiResponseModel<User>`, `ApiResponseModel<List<Project>>`) in one line. |
+### Tab shell (`features/base`)
 
-Example:
+- `BasePage` is a `Scaffold` with `AppDrawer`, an `IndexedStack` of **4 nested `Navigator`s** (Home, Projects, Latti AI, Account), and `AppNavigationBar` at the bottom.
+- `BaseController.currentIndex` (`RxInt`) is the selected tab. `onTabSelected(i)` switches tabs; double-tapping the active tab pops it to its first page.
+- Open the drawer from any tab: `Get.find<BaseController>().openDrawer()`.
+- To push a page **inside** a tab (bottom bar stays visible): `AppNavigation.push(Page(), context: context)`.
+- To push **over** the whole shell (bottom bar hidden): `AppNavigation.push(Page())`.
+- To replace a tab's screen, edit the `screens` list in `lib/features/base/views/base_page.dart` and the labels and icons in `AppNavigationBar`.
+
+---
+
+## 5. Recipe: Create a New Feature
+
+Example feature `orders`. Copy these templates and rename them.
+
+**1. Model**: `lib/features/orders/models/order.dart`
 
 ```dart
-final _api = Get.find<ApiServices>();
+class Order {
+  final int id;
+  final String title;
+  final String status;
 
-try {
-  isLoading.value = true;
-  final res = await _api.post('/auth/login/', body: {'email': email, 'password': password});
-  await StorageService.saveToken(res.get<String>('token')!);
-} on HttpException {
-  // Snackbar is already shown by ApiServices
-} finally {
-  isLoading.value = false;
+  const Order({required this.id, required this.title, required this.status});
+
+  factory Order.fromJson(Map<String, dynamic> json) => Order(
+        id: json['id'] ?? 0,
+        title: json['title'] ?? '',
+        status: json['status'] ?? '',
+      );
 }
 ```
 
-### `core/util`
+**2. Controller**: `lib/features/orders/controllers/orders_controller.dart`
 
-| Class | What it does | Why use it |
-| ----- | ------------ | ---------- |
-| `StorageService` (`storage_service.dart`) | Static wrapper around `GetStorage`. Saves and reads the access token, refresh token, and user role. Also has `hasToken`, `clearToken()`, and `logout()`; `logout()` erases everything except the saved language. | One place for persisted keys, so key names are never mistyped. `ApiServices` reads the token here, and `main.dart` uses `hasToken` to decide the first screen. |
-| `AppNavigation` (`app_navigation.dart`) | Holds the global `navigatorKey` and helpers: `push`, `pop`, `pushReplacement`, `pushAndClear`. Pass a `context` to navigate inside the current tab (the bottom bar stays visible). Without a `context`, it uses the root navigator. | Lets controllers navigate without a `BuildContext`. `pushAndClear` is meant for logout or finishing onboarding, where the back stack must be wiped. |
-| `AppLog` (`app_log.dart`) | Pretty, boxed console logs: `request`, `response`, `error`, `info`. Wrapped in `assert`, so it **only runs in debug builds**. | Readable API debugging, with no logs (or leaked data) in release builds. |
-| `FormValidator` + `FormFieldEntry` (`form_validator.dart`) | `validateField` / `validateAll` check that fields are not empty, show a snackbar, and focus the first invalid field. Also `isValidEmail` and `isValidPassword` (at least 8 characters and one uppercase letter). | Same validation behavior on every form, without needing `Form` + `GlobalKey<FormState>`. |
-| `ScreenSize` extension (`screen_size.dart`) | Adds `context.w()`, `context.h()`, `context.sp()` to scale sizes from a 393×852 design (Figma). Also adds `isTabletDevice`, `pagePadding`, `maxContentWidth`, `gridColumns`, and spacing presets (`spacing8`, `spacing16`, ...). | Pixel values from the design scale correctly on small phones and are capped on tablets, so the layout doesn't stretch. |
-| `DashedBorderPainter` (`dashed_border_painter.dart`) | A `CustomPainter` that draws a dashed rounded-rectangle border. | For upload boxes, empty states, or "add new" cards that need a dashed outline. |
+```dart
+import 'package:get/get.dart';
+import 'package:starter/core/services/api/services/api_services.dart';
+import '../models/order.dart';
 
-### `core/constants`
+class OrdersController extends GetxController {
+  final _api = Get.find<ApiServices>();
 
-| Class / file | What it does | Why use it |
-| ------------ | ------------ | ---------- |
-| `AppColors` (`app_colors.dart`) | Every color in the app as `static const` values: brand, text, status (success, warning, danger) and their background tints, borders, and so on. | One source of truth for colors. Changing a brand color is a one-line edit, and screens never hard-code hex values. |
-| `AppFonts` (`app_fonts.dart`) | Font family names (`outfit`, `cormorantGaramond`). | Avoids typos in font names. These must match the `fonts:` section in `pubspec.yaml`. |
-| `AppConstant` (`app_constant.dart`) | `baseUrl` and full API endpoint URLs (register, forgot password, OTP, onboarding, home ...). | Keeps endpoints in one place, so a URL change doesn't require searching the codebase. |
-| `AppAssertImage` (`app_assert_image.dart`) | Singleton with asset paths for icons and images (`AppAssertImage.instance.appLogo`). | Type-safe asset paths and autocomplete instead of raw strings. |
-| `AppImages` (`images.dart`) | Static asset paths (older style, used for splash images). | Same purpose as `AppAssertImage`. New assets should go into one of the two, not both. |
-| `kLangCodes` (`lang_codes.dart`) | List of supported language codes; languages without translations fall back to English. | Ready for a language picker or localization setup. |
+  final RxList<Order> orders = <Order>[].obs;
+  final RxBool isLoading = false.obs;
 
-### `core/themes`
+  @override
+  void onInit() {
+    super.onInit();
+    fetchOrders();
+  }
 
-| Item | What it does | Why use it |
-| ---- | ------------ | ---------- |
-| `appTheme` (`themes.dart`) | The global Material 3 `ThemeData`: color scheme from `AppColors`, Plus Jakarta Sans text theme, and styles for app bars, cards, all button types, inputs, the bottom nav bar, snackbars, and progress indicators. | Plain Flutter widgets (`ElevatedButton`, `TextField`, `Card` ...) match the design automatically without extra styling. |
+  Future<void> fetchOrders() async {
+    isLoading.value = true;
+    try {
+      final res = await _api.get('/orders/');
+      final list = res.asList ?? [];
+      orders.assignAll(list.whereType<Map<String, dynamic>>().map(Order.fromJson));
+    } catch (_) {
+      // ApiServices already showed the error snackbar
+    } finally {
+      isLoading.value = false;
+    }
+  }
+}
+```
 
-### `core/routes`
+**3. Binding**: `lib/features/orders/binding/orders_binding.dart`
 
-| Item | What it does | Why use it |
-| ---- | ------------ | ---------- |
-| `appRouter` (`app_router.dart`) | A `GoRouter` instance with an empty route list. **Not wired in yet**: the app currently navigates with `GetMaterialApp` + `AppNavigation`. | Ready for when you need URL-based routing, deep links, or web support. |
-| `pattoTransitionPage` / `pattoTransitionsBuilder` (`patto_page_transitions.dart`) | A 280 ms fade + slide-from-right page transition for `go_router` (`CustomTransitionPage`). | Gives every route the same, smooth animation once `go_router` is used. |
+```dart
+import 'package:get/get.dart';
+import '../controllers/orders_controller.dart';
 
-### `core/background`
+class OrdersBinding {
+  static void dependencies() {
+    Get.lazyPut<OrdersController>(() => OrdersController(), fenix: true);
+  }
+}
+```
 
-| Class | What it does | Why use it |
-| ----- | ------------ | ---------- |
-| `StarryBackground` (`starry_background.dart`) | A gradient background with randomly placed stars. Star count, size, opacity, colors, and random seed are configurable, and it can wrap a `child`. | A ready-made decorative background for splash, onboarding, or hero screens. |
+**4. Register it**: in `lib/core/bindings/app_bindings.dart`
 
-### `core/user_profile`
+```dart
+static void init() {
+  AuthBinding.authDependencies();
+  BaseBinding.dependencies();
+  OrdersBinding.dependencies(); // add
+}
+```
 
-| Class | What it does | Why use it |
-| ----- | ------------ | ---------- |
-| `UserController` / `UserProfile` | **Commented-out templates**: a profile model (`fromJson`, `toJson`, `copyWith`) and a controller that fetches the logged-in user. | A starting point when you connect a real "current user" endpoint. Uncomment it and switch the request to `ApiServices`. |
+**5. View**: `lib/features/orders/views/orders_page.dart`
 
-### `core/widgets`
+```dart
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:starter/core/constants/app_colors.dart';
+import 'package:starter/core/util/screen_size.dart';
+import 'package:starter/core/widgets/feature/feature_widgets.dart';
+import 'package:starter/core/widgets/text/app_text.dart';
+import '../controllers/orders_controller.dart';
 
-Reusable UI building blocks. They use `AppColors`, `AppText`, and `ScreenSize`, so every screen looks the same.
+class OrdersPage extends StatelessWidget {
+  const OrdersPage({super.key});
 
-**Text and input**
+  @override
+  Widget build(BuildContext context) {
+    final controller = Get.find<OrdersController>();
 
-| Widget | What it does | Why use it |
-| ------ | ------------ | ---------- |
-| `AppText` (`text/app_text.dart`) | The standard text widget. Use the main constructor for full control, or the presets `AppText.display(...)` for headings and `AppText.body(...)` for body text. Font size is responsive by default. | Every text in the app uses the same fonts, sizes, and colors without repeating `TextStyle`. |
-| `AppTextField` (`text/text_field/AppTextFiled.dart`) | A text input with a label, an optional right-side label action (for example "Forgot password?"), prefix and suffix icons, password mode, a validator, and custom colors and borders. | One consistent input design for every form. |
-| `AppSearchBar` (`app_search_bar.dart`) | A rounded search input with a search icon and `onChanged`. | Drop-in search for list screens. |
-| `MathText` (`text/math_text.dart`) | **Commented out.** Renders text mixed with LaTeX math (needs `flutter_math_fork`). | Keep it in case the app needs math content. |
+    return FeaturePageShell(
+      child: Column(
+        children: [
+          const FeatureAppBar(title: 'Orders'),
+          Expanded(
+            child: Obx(() {
+              if (controller.isLoading.value) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (controller.orders.isEmpty) {
+                return Center(child: AppText.body('No orders yet'));
+              }
+              return RefreshIndicator(
+                onRefresh: controller.fetchOrders,
+                child: FeatureSeparatedList(
+                  itemCount: controller.orders.length,
+                  itemBuilder: (context, i) {
+                    final order = controller.orders[i];
+                    return FeatureListCard(
+                      title: order.title,
+                      subtitle: order.status,
+                      leadingLabel: '#${order.id}',
+                      leadingColor: AppColors.brandBlueSoft,
+                      onTap: () {},
+                    );
+                  },
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
 
-**Buttons**
+**6. Open it**: `AppNavigation.push(const OrdersPage(), context: context);`
 
-| Widget | What it does | Why use it |
-| ------ | ------------ | ---------- |
-| `AppButton` (`buttons/app_button.dart`) | The main call-to-action button: press animation (scales down and fades slightly), built-in loading state, prefix and suffix icons, and custom colors and sizes. Also has `AppButton.buildLoadingOverlay(isLoading: ...)` for a full-screen loading card. | Every primary action looks and feels the same, and showing a loading state is one flag. |
-| `SocialButton` (`buttons/social_login_buttons.dart`) | An outlined button with an image or icon plus text, used for "Continue with Google / Apple". | Ready for social login rows. |
-| `CustomAppButton` (`buttons/custom_button.dart`) | **Commented out.** An older button that used an image background. | Kept for reference; use `AppButton` instead. |
+> `FeaturePageShell` already wraps content in `SafeArea`. If you build a plain `Scaffold` instead, add `SafeArea` yourself.
 
-**Navigation and structure**
+---
 
-| Widget | What it does | Why use it |
-| ------ | ------------ | ---------- |
-| `AppNavigationBar` (`bottom_navigation/bottom_navigation.dart`) | The 4-tab bottom bar (Home, Projects, Latti AI, Account) with active and inactive icons, a small "pop" scale animation on tap, and animated color and label changes. | Used by `BasePage`; edit the icon and label lists here to change the tabs. |
-| `AppDrawer` (`app_drawer.dart`) | The side drawer. Shows the user's name and role, and shows or hides menu items depending on `StorageService.userRole`. | Role-based menu in one place. |
-| `BuildAppBar` (`app_bar/build_app_bar.dart`) | A custom `PreferredSizeWidget` app bar with an optional back button, title, notification bell, and avatar. | Use it as `Scaffold.appBar` for a consistent header. |
-| `BuildSliverAppBar` (`app_bar/build_sliver_app_bar.dart`) | A floating `SliverAppBar` with an optional back button, title, and profile image. | For scrolling screens built with `CustomScrollView`. |
+## 6. Recipes: Common Tasks
 
-**Feature page kit** (import everything at once with `feature/feature_widgets.dart`)
+### Form with validation (controller side)
 
-| Widget | What it does | Why use it |
-| ------ | ------------ | ---------- |
-| `FeaturePageShell` | A `Scaffold` with the app's gradient background and soft glow circles. | Wrap any feature screen in it to get the standard background. |
-| `FeatureAppBar`, `FeatureIconButton`, `FeatureQuietLabel` | A lightweight in-page header with a back button and trailing slot, a round icon button, and a small muted label. | Headers for screens built on `FeaturePageShell`. |
-| `FeatureHeroCard`, `FeatureModeCard` | A large gradient "hero" card for the top of a page, and a soft tinted action tile. | For dashboards and home-style layouts. |
-| `FeatureListCard`, `FeatureSeparatedList`, `FeatureBadge` | A list row card (title, subtitle, leading badge, optional progress bar, chevron, selected state), a spaced `ListView` with optional header and footer, and a small pill badge. | Builds a consistent list screen quickly. |
+```dart
+final emailController = TextEditingController();
+final passwordController = TextEditingController();
+final emailFocus = FocusNode();
+final passwordFocus = FocusNode();
+final RxBool isLoading = false.obs;
+final RxBool obscurePassword = true.obs;
 
-**Dialogs, sheets, and feedback**
+void togglePassword() => obscurePassword.toggle();
 
-| Widget / class | What it does | Why use it |
-| -------------- | ------------ | ---------- |
-| `CustomSnackBar` (`snakbar/custom_snackbar.dart`) | Static `success`, `error`, `warning`, `info` snackbars with an icon, a color, and floating style. Uses `Get.context`, so it works from controllers. | One-line user feedback from anywhere. `ApiServices` and `FormValidator` already use it. |
-| `AppDialog` (`dialog/app_dialog.dart`) | A confirm/cancel dialog with a title and description. Its width adapts on tablets. | For "Are you sure?" confirmations. |
-| `SuccessDialog` (`app_dialog.dart`) | A dialog with an image, title, description, and one action button. | For "Done!" or "Password changed" moments. |
-| `PattoBottomSheet` (`sheets/patto_bottom_sheet.dart`) | A bottom sheet with rounded top corners and a drag handle. Open it with `PattoBottomSheet.show(...)`. | Every bottom sheet in the app looks the same. |
-| `PremiumPaywallSheet` (`Drawer/app_drawer.dart`) | A premium upgrade bottom sheet with a monthly/yearly toggle and plan cards. Open it with `PremiumPaywallSheet.show(context)`. | Ready-made paywall UI. |
-| `GuestOverlay` (`guest_overlay/guest_overlay.dart`) | **Commented out.** Blurs a page and shows a "sign in / sign up" card when the user isn't logged in. | Useful if some screens should be visible but locked for guests. |
+Future<void> submit() async {
+  final email = emailController.text.trim();
+  final password = passwordController.text;
+
+  final ok = FormValidator.validateAll([
+    FormFieldEntry(value: email, errorMessage: 'Enter your email', focusNode: emailFocus),
+    FormFieldEntry(value: password, errorMessage: 'Enter your password', focusNode: passwordFocus),
+  ]);
+  if (!ok) return;
+  if (!FormValidator.isValidEmail(email)) {
+    CustomSnackBar.warning('Enter a valid email');
+    emailFocus.requestFocus();
+    return;
+  }
+
+  isLoading.value = true;
+  try {
+    final res = await _api.post('/auth/login/', body: {'email': email, 'password': password});
+    final token = res.get<String>('token');
+    if (token != null) await StorageService.saveToken(token);
+    AppNavigation.pushAndClear(const BasePage());
+  } catch (_) {
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+@override
+void onClose() {
+  emailController.dispose();
+  passwordController.dispose();
+  emailFocus.dispose();
+  passwordFocus.dispose();
+  super.onClose();
+}
+```
+
+### Form (view side)
+
+```dart
+AppTextField(
+  label: 'Email',
+  hintText: 'you@example.com',
+  controller: controller.emailController,
+  focusNode: controller.emailFocus,
+  keyboardType: TextInputType.emailAddress,
+  prefixIcon: Icons.mail_outline_rounded,
+),
+SizedBox(height: context.h(16)),
+Obx(() => AppTextField(
+  label: 'Password',
+  controller: controller.passwordController,
+  focusNode: controller.passwordFocus,
+  obscureText: controller.obscurePassword.value,
+  prefixIcon: Icons.lock_outline_rounded,
+  suffixIcon: controller.obscurePassword.value
+      ? Icons.visibility_outlined
+      : Icons.visibility_off_outlined,
+  onSuffixIconTap: controller.togglePassword,
+)),
+SizedBox(height: context.h(28)),
+Obx(() => AppButton(
+  buttonText: 'Sign In',
+  isLoading: controller.isLoading.value,
+  onPressed: controller.submit,
+  fillColor: AppColors.brandBlue,
+)),
+```
+
+### File upload
+
+```dart
+await _api.postFormData(
+  '/profile/update/',
+  fields: {'name': name},
+  imageFile: pickedFile,       // dart:io File, optional
+  imageFieldName: 'avatar',    // default 'image'
+);
+```
+
+### Typed response
+
+```dart
+final res = await _api.get('/me/');
+final model = ApiResponseModel<User>.fromApiResponse(res, fromJson: (d) => User.fromJson(d));
+```
+
+### Handling a specific error
+
+```dart
+try {
+  await _api.post('/auth/login/', body: body);
+} on HttpException catch (e) {
+  if (e.statusCode == 401) { /* ... */ }
+}
+```
+
+### Logout
+
+```dart
+await StorageService.logout();              // keeps language preference
+AppNavigation.pushAndClear(const SignInScreen());
+```
+
+### Feedback, dialogs, sheets
+
+```dart
+CustomSnackBar.success('Saved');
+CustomSnackBar.error('Something failed');
+CustomSnackBar.warning('Check your input');
+CustomSnackBar.info('Heads up');
+
+showDialog(
+  context: context,
+  builder: (_) => AppDialog(
+    title: 'Delete project?',
+    description: 'This cannot be undone.',
+    confirmText: 'Delete',
+    onConfirm: () { Navigator.pop(context); controller.delete(); },
+    onCancel: () => Navigator.pop(context),
+  ),
+);
+
+SuccessDialog.show(
+  context: context,
+  title: 'Password changed',
+  description: 'You can now sign in with your new password.',
+  imageString: AppAssertImage.instance.appLogo,
+);
+
+PattoBottomSheet.show(
+  context: context,
+  builder: (_) => PattoBottomSheet(
+    padding: EdgeInsets.all(context.w(20)),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [/* ... */]),
+  ),
+);
+```
+
+### Full-screen loading overlay
+
+```dart
+Stack(children: [
+  pageContent,
+  AppButton.buildLoadingOverlay(isLoading: controller.isLoading, loadingMessage: 'Saving...'),
+]);
+```
+
+---
+
+## 7. Core API Reference
+
+### `ApiServices`: `package:starter/core/services/api/services/api_services.dart`
+
+Registered once in `main.dart`. Get it with `Get.find<ApiServices>()`.
+
+| Method | Signature |
+| ------ | --------- |
+| GET | `Future<ApiResponse> get(String endpoint, {Map<String,String>? headers})` |
+| POST | `Future<ApiResponse> post(String endpoint, {Map<String,String>? headers, dynamic body})` |
+| PUT | `Future<ApiResponse> put(String endpoint, {headers, body})` |
+| PATCH | `Future<ApiResponse> patch(String endpoint, {headers, body})` |
+| DELETE | `Future<ApiResponse> delete(String endpoint, {headers, body})` |
+| Multipart | `postFormData` / `putFormData` / `patchFormData(String endpoint, {headers, required Map<String,String> fields, File? imageFile, String imageFieldName = 'image'})` |
+
+Behavior:
+- Full URL = `baseUrl + endpoint`. `body` is JSON-encoded automatically.
+- Adds `Accept` and `Content-Type: application/json`, plus `Authorization: Bearer <token>` if a token is saved.
+- Expects the backend shape `{ "success": bool, "message": String, "data": any }`. `message` falls back to `detail`.
+- **Success** (2xx and `success != false`) → returns `ApiResponse`.
+- **Failure** → shows `CustomSnackBar.error(message)` and throws `HttpException`.
+- **No internet, timeout, or client error** → shows a snackbar and rethrows the original exception.
+
+`ApiResponse` fields: `statusCode`, `isSuccess`, `message`, `data`. Helpers: `asMap`, `asList`, `get<T>('key')` (reads a key from map data).
+
+`HttpException` fields: `message`, `statusCode`, `uri`, `body`, `status`.
+
+### `ApiResponseModel<T>`: `package:starter/core/services/api/models/api_response_model.dart`
+
+- `ApiResponseModel<T>.fromApiResponse(ApiResponse r, {T Function(dynamic)? fromJson})`
+- `ApiResponseModel<T>.fromJson(Map json, {fromJson, statusCode})`
+- `ApiResponseModel.fromList<R>(Map json, {required R Function(Map) itemFromJson})` → `ApiResponseModel<List<R>>`
+
+### `StorageService`: `package:starter/core/util/storage_service.dart`
+
+All members are static.
+
+| Member | Purpose |
+| ------ | ------- |
+| `saveToken(String)`, `accessToken`, `hasToken` | Access token |
+| `saveRefreshToken(String)`, `refreshToken` | Refresh token |
+| `saveRole(String)`, `userRole` | User role (`owner`, `finance`, `pm`, `field_super`); drives `AppDrawer` menu items |
+| `clearToken()` | Removes the access and refresh tokens |
+| `logout()` | Erases all storage except the language key |
+
+To store something new, add a private key constant plus a getter and a `save...` method in this class. Do not call `GetStorage()` from features.
+
+### `AppNavigation`: `package:starter/core/util/app_navigation.dart`
+
+| Method | Use |
+| ------ | --- |
+| `push<T>(Widget page, {BuildContext? context})` | Open a page. With `context` it opens inside the current tab; without it, on the root navigator. |
+| `pop<T>([T? result, BuildContext? context])` | Go back |
+| `pushReplacement<T, TO>(Widget page, {BuildContext? context})` | Replace the current page |
+| `pushAndClear<T>(Widget page)` | Clear the whole stack (login success, logout) |
+| `navigatorKey` | Root navigator key, already passed to `GetMaterialApp` |
+
+### `FormValidator`: `package:starter/core/util/form_validator.dart`
+
+- `validateField({required String value, required String errorMessage, FocusNode? focusNode})` → `bool`. Shows a snackbar and focuses the field if empty.
+- `validateAll(List<FormFieldEntry>)` → `bool`. Stops at the first empty field.
+- `isValidEmail(String)`, `isValidPassword(String, {int minLength = 8})` (also requires one uppercase letter).
+
+### `ScreenSize` extension: `package:starter/core/util/screen_size.dart`
+
+| Member | Meaning |
+| ------ | ------- |
+| `context.w(px)` | Scale by width: horizontal padding, widths, radius, square icons |
+| `context.h(px)` | Scale by height: vertical padding, heights, vertical gaps |
+| `context.sp(px)` | Scale a font or icon size (clamped 0.8–1.3×) |
+| `context.isTabletDevice` | Shortest side ≥ 600 |
+| `context.screenWidth` / `screenHeight` | Raw size |
+| `context.pagePadding` | Horizontal page padding (20 on phones, 48 on tablets) |
+| `context.maxContentWidth` | Width to cap content on tablets (≤ 600) |
+| `context.gridColumns` | 1 on phones, 2 on tablets |
+| `context.spacing4/8/12/16/24/32` | Spacing presets |
+| `responsiveSize`, `responsiveFontSize`, `widthPercentage`, `heightPercentage` | **Deprecated**; use `w`/`h`/`sp` |
+
+### `AppLog`: `package:starter/core/util/app_log.dart`
+
+`AppLog.info(msg)`, `AppLog.request(...)`, `AppLog.response(...)`, `AppLog.error(...)`. These only print in debug builds. Use `AppLog.info` instead of `print`.
+
+### Other `core` items
+
+| Item | Import | Notes |
+| ---- | ------ | ----- |
+| `appTheme` | `core/themes/themes.dart` | Global theme. Styles Material widgets (buttons, inputs, cards, app bar, snackbars) with the brand green and Plus Jakarta Sans. |
+| `AppBindings.init()` | `core/bindings/app_bindings.dart` | Add every new feature binding here. |
+| `AppConstant` | `core/constants/app_constant.dart` | Holds `baseUrl` and **full** endpoint URLs. Legacy; don't feed them to `ApiServices`. |
+| `AppAssertImage.instance.<name>` | `core/constants/app_assert_image.dart` | Asset paths: `appLogo`, `googleLogo`, `appleLogo`, `profile`, `backgroundImage` ... Add new asset paths here. |
+| `AppImages.<name>` | `core/constants/images.dart` | Legacy asset paths; don't add new ones here. |
+| `AppFonts.outfit`, `AppFonts.cormorantGaramond` | `core/constants/app_fonts.dart` | For `AppText(fontFamily: ...)`. **The font files are not in `pubspec.yaml` yet.** |
+| `kLangCodes` | `core/constants/lang_codes.dart` | Supported language codes. |
+| `StarryBackground` | `core/background/starry_background.dart` | Night-sky gradient with stars: `StarryBackground(child: ...)`. |
+| `DashedBorderPainter` | `core/util/dashed_border_painter.dart` | `CustomPaint(painter: DashedBorderPainter(color:, strokeWidth:, dashWidth:, dashSpace:, borderRadius:))`. |
+| `appRouter`, `pattoTransitionPage` | `core/routes/` | go_router setup. **Unused**; don't route through it unless asked to migrate. |
+
+---
+
+## 8. Shared Widgets Reference (`lib/core/widgets/`)
+
+Check this list before creating a new widget.
+
+### Need → widget
+
+| I need... | Use |
+| --------- | --- |
+| Any text | `AppText`, `AppText.display`, `AppText.body` |
+| Text input | `AppTextField` |
+| Search input | `AppSearchBar` |
+| Primary or secondary button | `AppButton` |
+| "Continue with Google/Apple" | `SocialButton` |
+| Screen background with brand gradient | `FeaturePageShell` |
+| In-page header with back button | `FeatureAppBar` |
+| Classic `Scaffold.appBar` | `BuildAppBar` |
+| App bar inside `CustomScrollView` | `BuildSliverAppBar` |
+| Big gradient banner card | `FeatureHeroCard` |
+| Tappable action tile | `FeatureModeCard` |
+| List of cards | `FeatureSeparatedList` + `FeatureListCard` |
+| Square label chip | `FeatureBadge` |
+| Small uppercase section label | `FeatureQuietLabel` |
+| Round glass icon button | `FeatureIconButton` |
+| Confirm/cancel dialog | `AppDialog` |
+| Success dialog | `SuccessDialog.show(...)` |
+| Bottom sheet | `PattoBottomSheet` |
+| Paywall | `PremiumPaywallSheet.show(context)` |
+| Toast/snackbar | `CustomSnackBar` |
+| Full-screen loader | `AppButton.buildLoadingOverlay(...)` |
+| Dashed divider | `LineDivider` |
+| "— or —" divider | `TextDivider` |
+
+### Signatures
+
+**`AppText`**: `core/widgets/text/app_text.dart`
+
+```dart
+AppText(
+  data: 'Hello',                // required
+  fontSize: 16,                 // scaled with sp() when useResponsiveFontSize = true (default)
+  fontWeight: FontWeight.w400,
+  color: AppColors.ink,         // default is Colors.black, so always pass a color
+  maxLines: 2,                  // default 20
+  overflow: TextOverflow.ellipsis,
+  textAlign: TextAlign.center,
+  height: 1.5,
+  latterSpacing: -0.5,          // note spelling: "latter"
+  decoration: TextDecoration.underline,
+  fontFamily: AppFonts.outfit,  // or googleFontFamily: GoogleFonts.inter
+  frosted: false,               // true = blurred glass pill behind the text
+  style: null,                  // full override
+)
+AppText.display('Title', size: 28, weight: FontWeight.w800, color: AppColors.ink)  // headings
+AppText.body('Body', size: 13, weight: FontWeight.w500, color: AppColors.muted)    // secondary text
+```
+
+**`AppButton`**: `core/widgets/buttons/app_button.dart`
+
+```dart
+AppButton(
+  buttonText: 'Continue',       // required
+  onPressed: () {},             // required; null disables the button
+  isLoading: false,             // shows a spinner and disables the button
+  loadingText: null,
+  fillColor: AppColors.brandBlue, // default is AppColors.buttonFillColor (#2563EB blue)
+  textColor: AppColors.white,
+  borderColor: null, borderWidth: null,
+  borderRadius: 16,             // default 16
+  buttonHeight: 52,             // default 52
+  buttonWidth: null,            // default full width
+  fontSize: 15, fontWeight: FontWeight.w600,
+  prefixIcon: null, suffixIcon: null,
+  elevation: 0,
+)
+// Secondary or outlined: fillColor: Colors.transparent, borderColor: AppColors.uiBorder, borderWidth: 1, textColor: AppColors.ink
+```
+
+**`AppTextField`**: `core/widgets/text/text_field/AppTextFiled.dart` (the file name has a typo; import it as is)
+
+```dart
+AppTextField(
+  label: 'Email', label2: 'Forgot?', label2OnClick: () {},  // label2 = link on the right of the label
+  hintText: '...',
+  controller: ..., focusNode: ...,
+  keyboardType: TextInputType.emailAddress,
+  obscureText: false,
+  prefixIcon: Icons.mail_outline, suffixIcon: Icons.visibility, onSuffixIconTap: () {},
+  suffixWidget: null,
+  validator: null, enabled: true,
+  fillColor: ..., borderColor: ..., focusedErrorBorderColor: ...,
+  inputTextColor: ..., hintTextColor: ...,
+  customBorderRadius: null, elevation: 0,
+)
+```
+
+**`AppSearchBar`**: `core/widgets/app_search_bar.dart`
+`AppSearchBar(hintText: 'Search', controller: ..., onChanged: (q) {}, margin: ..., backgroundColor: Colors.white, showBorder: true)`
+
+**`SocialButton`**: `core/widgets/buttons/social_login_buttons.dart`
+`SocialButton(onTap: ..., text: 'Continue with Google', height: context.h(52), iconPath: AppAssertImage.instance.googleLogo /* or icon: */, backgroundColor:, textColor:, borderColor:, iconColor:)`
+
+**Feature kit**: import all at once from `core/widgets/feature/feature_widgets.dart`
+
+```dart
+FeaturePageShell(child: ..., primaryGlowColor: AppColors.brandBlue, secondaryGlowColor: AppColors.practiceTeal)
+FeatureAppBar(title: 'Title', centerTitle: true, trailing: Widget?, onBack: VoidCallback?)  // default back = AppNavigation.pop
+FeatureIconButton(icon: Icons.add, onTap: () {})
+FeatureQuietLabel('Section')
+FeatureHeroCard(title: '...', subtitle: '...', badgeLabel: 'AB', gradient: AppColors.heroGradient, shadowColor: null)
+FeatureModeCard(icon: Icons.bolt, title: '...', subtitle: '...',
+                gradient: AppColors.brandBlueGradient, softFill: AppColors.brandBlueSoft, onTap: () {})
+FeatureSeparatedList(itemCount: n, itemBuilder: (ctx, i) => ..., header: Widget?, footer: Widget?,
+                     padding: null, separatorHeight: null)
+FeatureListCard(title: '...', subtitle: '...', subtitleColor:, leadingLabel: 'AB', leadingColor:,
+                leading: Widget?, selected: false, showChevron: true, onTap:, onLongPress:)
+// progress / progressLabel exist as parameters but are NOT rendered yet
+FeatureBadge(label: 'AB', color: AppColors.brandBlueSoft, foregroundColor: AppColors.ink)
+```
+
+**App bars**
+- `BuildAppBar(title:, showBackButton: true, onBackButtonPressed:, showNotification: false, onNotificationPressed:, avatarUrl:, isAssetAvatar: true, onAvatarPressed:, backgroundColor: /* default black */, titleFontSize:, fontWeight:)`. It implements `PreferredSizeWidget`, so it can be used as `Scaffold.appBar`.
+- `BuildSliverAppBar(title:, showBackButton: false, showProfileIcon: true, profileImage:, onProfileTap:)`
+
+**Dialogs and sheets**
+- `AppDialog(title:, description:, confirmText:, cancelText:, required onConfirm, required onCancel)`. The confirm button is red (destructive). **It does not close itself**, so call `Navigator.pop(context)` in the callbacks.
+- `SuccessDialog.show(context:, title:, description:, imageString:, buttonText: 'Continue', onPressed:)`. It closes itself if `onPressed` is null.
+- `PattoBottomSheet.show(context:, builder:)` + `PattoBottomSheet(child:, padding:, backgroundColor: /* default AppColors.cream */, showHandle: true)`
+- `PremiumPaywallSheet.show(context)`. Note: the class lives in `core/widgets/Drawer/app_drawer.dart`.
+
+**Navigation widgets**
+- `AppNavigationBar(currentIndex:, onTabSelected:)`. Tab icons and labels are static lists inside the file.
+- `AppDrawer()`. Lives in `core/widgets/app_drawer.dart`; menu items depend on `StorageService.userRole`.
 
 **Dividers**
-
-| Widget | What it does | Why use it |
-| ------ | ------------ | ---------- |
-| `LineDivider` (`divider/divider.dart`) | A horizontal dashed line. | A light separator between sections. |
-| `TextDivider` (`divider/text_divider.dart`) | A line with text in the middle (default "or"). | The classic "— or —" between login options. |
+- `LineDivider(lineColor: AppColors.dividerDefault, dashWidth: 4, dashSpace: 4, strokeWidth: 1)`
+- `TextDivider(text: 'or', lineColor:, textColor:, fontSize: 14)`
 
 ---
 
-## Adding a New Feature
+## 9. Design Tokens
 
-Example: an `orders` feature.
+### Colors (`AppColors`), preferred tokens for new UI
 
-1. Create the folders:
+| Role | Token |
+| ---- | ----- |
+| Primary / brand (green `#4FAF5A`) | `brandBlue` |
+| Primary dark | `brandBlueDeep` |
+| Primary soft background | `brandBlueSoft`, `brandBlueSoftAlt`, `brandBlueMist` |
+| Secondary (teal) | `practiceTeal`, `practiceTealDeep`, `practiceTealSoft` |
+| Main text | `ink` |
+| Secondary text | `muted` |
+| Screen background | `screenBgTop` → `screenBgBottom` (gradient) |
+| Card / surface | `white` |
+| Border | `uiBorder` |
+| Success / warning / danger | `success`, `warning`, `danger` / `dangerBright` |
+| Status tints | `successBackground`, `warningBackground`, `dangerBackground` |
+| Accent | `liveAccent` |
+| Gradients (List<Color>) | `heroGradient`, `brandBlueGradient`, `practiceTealGradient` |
+| Palettes for chips/categories | `categoryTints`, `subjectBadgeColors` |
 
-   ```text
-   lib/features/orders/
-   ├── binding/orders_binding.dart
-   ├── controllers/orders_controller.dart
-   ├── models/order.dart
-   └── views/orders_page.dart
-   ```
+Tokens under the "legacy" comments in `app_colors.dart` (`primary50..900`, `blue2_*`, `green*`, `dark*`, `white50..900`, auth colors) exist for older screens. Prefer the tokens above for new UI.
 
-2. Write the controller and use the core services:
+### Typography
 
-   ```dart
-   class OrdersController extends GetxController {
-     final _api = Get.find<ApiServices>();
-     final orders = <Order>[].obs;
-     final isLoading = false.obs;
+| Use | Code |
+| --- | ---- |
+| Screen title | `AppText.display('Title', size: 24)` |
+| Section title | `AppText(data: ..., fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.ink)` |
+| Body | `AppText(data: ..., fontSize: 14, color: AppColors.ink)` |
+| Secondary / caption | `AppText.body('...')` (13, w500, muted) |
+| Small label | `FeatureQuietLabel('LABEL')` |
 
-     @override
-     void onInit() {
-       super.onInit();
-       fetchOrders();
-     }
+### Spacing and shape
 
-     Future<void> fetchOrders() async {
-       isLoading.value = true;
-       try {
-         final res = await _api.get('/orders/');
-         orders.assignAll(res.asList!.map((e) => Order.fromJson(e)));
-       } finally {
-         isLoading.value = false;
-       }
-     }
-   }
-   ```
-
-3. Register it in a binding:
-
-   ```dart
-   class OrdersBinding {
-     static void dependencies() {
-       Get.lazyPut<OrdersController>(() => OrdersController(), fenix: true);
-     }
-   }
-   ```
-
-4. Call `OrdersBinding.dependencies()` inside `AppBindings.init()`.
-
-5. In the view, get the controller with `Get.find<OrdersController>()`, wrap reactive parts in `Obx`, and build the UI from `core/widgets`.
+- Page horizontal padding: `context.pagePadding` (or `context.w(20)`).
+- Vertical gaps: `SizedBox(height: context.h(8 | 12 | 16 | 24 | 32))`.
+- Radius: inputs 10, buttons 16, cards 16–20, hero cards 28, bottom sheets 24 (top). Always wrap in `context.w(...)`.
+- Card style: `AppColors.white` fill, `AppColors.uiBorder` border, soft shadow `Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: Offset(0, 4)`.
+- Use `withValues(alpha: x)`, not the deprecated `withOpacity(x)`.
 
 ---
 
-## Getting Started
+## 10. Known Quirks
 
-1. Install the [Flutter SDK](https://docs.flutter.dev/get-started/install) (Dart `^3.13.0`).
-2. Install dependencies:
+| Quirk | What to do |
+| ----- | ---------- |
+| `ApiServices(baseUrl: "baseUrl")` in `main.dart` is a placeholder | Set the real API base URL before testing network code. |
+| `AppColors.brandBlue*` tokens are green | The names are legacy. Use them as the brand color. |
+| `AppButton` default fill is blue `#2563EB` | Pass `fillColor: AppColors.brandBlue` for brand-colored buttons, unless the screen already uses the blue (auth screens do). |
+| `AppText` default color is black | Always pass `color:`. |
+| `AppConstant` endpoints are full URLs | Don't pass them to `ApiServices`; use relative paths. |
+| `AppNavigation.push` without `context` uses the root navigator | Pass `context:` to keep the bottom bar visible. |
+| Typos in paths: `AppTextFiled.dart`, `snakbar/`, `AppAssertImage`, `latterSpacing` | Keep them as is; renaming breaks imports. |
+| Two dialog files: `widgets/app_dialog.dart` (`SuccessDialog`) and `widgets/dialog/app_dialog.dart` (`AppDialog`) | Import the one that has the class you need. |
+| Two drawer files: `widgets/app_drawer.dart` (`AppDrawer`) and `widgets/Drawer/app_drawer.dart` (`PremiumPaywallSheet`) | Same as above. |
+| `SignInController.onSubmitTap` skips validation and the API call (commented out) and goes straight to `BasePage` | Demo behavior; re-enable the commented code when the backend is ready. |
+| `FeatureListCard` has `progress` / `progressLabel` parameters that are not drawn | Implement them in the widget first if a progress bar is needed. |
+| `HomeView`, `ProjectHome`, `ChatScreen`, `ProfilePage` are placeholders | Replace them with real screens using the recipes above. |
+| `pubspec.yaml` declares no `assets:` or `fonts:` | Add asset folders and fonts there before using `AppAssertImage` paths or `AppFonts`. |
+| `go_router` is installed but unused | Keep using `AppNavigation` unless asked to migrate. |
 
-   ```bash
-   flutter pub get
-   ```
+---
 
-3. Set your backend URL in `lib/main.dart` (currently the placeholder `"baseUrl"`):
+## 11. Checklist Before Finishing a Task
 
-   ```dart
-   Get.put(ApiServices(baseUrl: "https://your-api.com/api"));
-   ```
+- [ ] New code is under `lib/features/<feature>/` (or `lib/core/` if shared).
+- [ ] Logic is in a `GetxController`; the view only renders and forwards events.
+- [ ] The controller is registered in a binding, and the binding is called in `AppBindings.init()`.
+- [ ] Network calls use `ApiServices` with relative paths; loading resets in `finally`.
+- [ ] Text uses `AppText`, colors use `AppColors`, sizes use `context.w/h/sp`.
+- [ ] Existing shared widgets were reused where possible.
+- [ ] `TextEditingController`s and `FocusNode`s are disposed in `onClose()`.
+- [ ] No new packages were added without asking.
+- [ ] `flutter analyze` shows no new errors.
 
-4. Run the app:
+---
 
-   ```bash
-   flutter run
-   ```
+## 12. Getting Started (humans)
+
+```bash
+flutter pub get
+# set the API URL in lib/main.dart → Get.put(ApiServices(baseUrl: "https://your-api.com/api"));
+flutter run
+flutter analyze
+```
+
+Tech stack: `get`, `get_storage`, `http`, `http_parser`, `google_fonts`, `flutter_screenutil`, `go_router`, `fl_chart`, `intl`, `uuid`, `dotted_border`.
